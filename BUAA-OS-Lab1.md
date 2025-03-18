@@ -29,6 +29,8 @@ PHONY: all $(modules) clean
 * **`$(shell ...)`** :Makefile 中的 shell 函数，用于执行 shell 命令并返回结果。
 * **`$*`** :Makefile 中的自动变量，表示当前规则的目标文件名（不包括扩展名）。
 
+---
+
 ### 二、ELF中段和节：
 
 #### 1、定义
@@ -55,6 +57,8 @@ user@debian ~/Desktop $ readelf -S test
 ```
 
 * 其中 **.data** 的 **Addr** 被定位到了 `08000000`，**Size** 为 `00000e`，下一个节应该从 `080000e`开始，但是 **.bss** 是 **四字节对齐** ，导致只能从 `080000e`的下一个四字节倍数的地址开始，即 `08000010`。
+
+---
 
 ### 三、Linker Scripts
 
@@ -90,6 +94,38 @@ SECTIONS
 * 注意Linker Script 文件编辑时“=”两边的空格
 * `.` 的作用：用来做定位计数器，根据输出节的大小增长，在SECTIONS
   命令开始的时候，它的值为0。通过设置“.”即可设置接下来的节的起始地址。
+
+---
+
+### 四、Boot相关MIPS代码编写：
+
+#### 1、函数-->符号：
+
+在 `Note 1.4.3`中写着
+
+* mips_init 函数虽然为C 语言所书写，但是在被编译成汇编之后，其入口点
+  成为一个符号。
+
+故可以在 `start.S`中直接调用该C语言函数。
+
+#### 2、预处理代码：
+
+```
+1 EXPORT(_start)
+2 .set at
+3 .set reorder
+4 /* disable interrupts */
+5 mtc0 zero, CP0_STATUS
+```
+
+* 本段代码中的 `EXPORT` 是一个宏，它将 `_start` 函数导出为一个符号，使得链
+  接器可以找到它。可以简单的理解为，它实现了一种在汇编语言中的函数定义。
+* 首先是 `_start` 函数的声明，随后2、3 行的 `.set`允许汇编器使用 `at`寄存器，也允许对接下来的代码进行重排序，第5 行禁用了外部中断。
+
+---
+
+～～～～～～～～～～～～～～～～～～～～～～～～～～～～～～～～～～～～～～～～
+--------------------------------------------------------------------------------
 
 ## Exercise笔记
 
@@ -291,3 +327,51 @@ SECTIONS {
  o
 */
 ```
+
+### 1.3
+
+题目：
+
+```
+完成init/start.S 中空缺的部分。设置栈指针，跳转到mips_init 函数。
+```
+
+我的作答：
+
+```
+#include <asm/asm.h>
+#include <mmu.h>
+
+.text
+EXPORT(_start)
+.set at
+.set reorder
+/* Lab 1 Key Code "enter-kernel" */
+	/* clear .bss segment */
+	la      v0, bss_start
+	la      v1, bss_end
+clear_bss_loop:
+	beq     v0, v1, clear_bss_done
+	sb      zero, 0(v0)
+	addiu   v0, v0, 1
+	j       clear_bss_loop
+/* End of Key Code "enter-kernel" */
+
+clear_bss_done:
+	/* disable interrupts */
+	mtc0    zero, CP0_STATUS
+
+	/* hint: you can refer to the memory layout in include/mmu.h */
+	/* set up the kernel stack */
+	/* Exercise 1.3: Your code here. (1/2) */
+	la sp KSTACKTOP
+
+	/* jump to mips_init */
+	/* Exercise 1.3: Your code here. (2/2) */
+	j mips_init
+
+```
+
+* 解题心得：这道题只需要填写两行代码，而且也有明确要求
+  * 第一步只需要在mmu.h中的内存布局图找到 `KSTACKTOP`，并检索到文件中对应的宏 `#define KSTACKTOP (ULIM + PDMAP`，之后将这个地址赋值给 `sp`寄存器即可
+  * 第二步直接用 `j` 函数跳转即可：`j mips_init`
