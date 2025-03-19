@@ -98,7 +98,6 @@ SECTIONS
   **需要分号**：赋值、符号定义、表达式等独立语句。
   **不需要分号**：块结构、节定义等复合语句。
 
-
 ---
 
 ### 四、Boot相关MIPS代码编写：
@@ -140,11 +139,9 @@ SECTIONS
 * `va_arg(va_list ap, 类型)`：用于取变长参数表下一个参数的宏
 * `va_end(va_list ap)`：结束使用变长参数表的宏
 
-其中`lastarg` 为该函数最后一个命名的形式参数。
+其中 `lastarg` 为该函数最后一个命名的形式参数。
 
 ---
-
-
 
 ## Exercise笔记
 
@@ -247,6 +244,10 @@ typedef struct {
 } Elf32_Ehdr;
 ```
 
+---
+
+
+
 ### 1.2
 
 题目：
@@ -279,7 +280,7 @@ SECTIONS {
 	 */
 	/* Step 1: Set the loading address of the text section to the location counter ".". */
 	/* Exercise 1.2: Your code here. (1/4) */
-	. = 0x80020000
+	. = 0x80020000;
 	/* Step 2: Define the text section. */
 	/* Exercise 1.2: Your code here. (2/4) */
 	.text : {*(.text)}
@@ -347,6 +348,10 @@ SECTIONS {
 */
 ```
 
+---
+
+
+
 ### 1.3
 
 题目：
@@ -394,3 +399,250 @@ clear_bss_done:
 * 解题心得：这道题只需要填写两行代码，而且也有明确要求
   * 第一步只需要在mmu.h中的内存布局图找到 `KSTACKTOP`，并检索到文件中对应的宏 `#define KSTACKTOP (ULIM + PDMAP`，之后将这个地址赋值给 `sp`寄存器即可
   * 第二步直接用 `j` 函数跳转即可：`j mips_init`
+
+---
+
+### 1.4
+
+题目：
+
+```
+阅读相关代码和下面对于函数规格的说明，补全lib/print.c 中vprintfmt()
+函数中两处缺失的部分来实现字符输出。第一处缺失部分：找到% 并分析输出格式; 第二处
+缺失部分：取出参数，输出格式串为%[flags][width][length]<specifier> 的情况。
+```
+
+我的作答：
+
+```c
+void vprintfmt(fmt_callback_t out, void *data, const char *fmt, va_list ap) {
+	char c;
+	const char *s;
+	long num;
+
+	int width;
+	int long_flag; // output is long (rather than int)
+	int neg_flag;  // output is negative
+	int ladjust;   // output is left-aligned
+	char padc;     // padding char
+
+	for (;;) {
+		/* scan for the next '%' */
+		/* Exercise 1.4: Your code here. (1/8) */
+		const char * temp = fmt;
+		while (*temp != '%' && *temp != '\0') {
+			temp++;
+		}
+		/* flush the string found so far */
+		/* Exercise 1.4: Your code here. (2/8) */
+		out(data, fmt, temp-fmt);
+		fmt = temp;
+		/* check "are we hitting the end?" */
+		/* Exercise 1.4: Your code here. (3/8) */
+		if('\0' == *fmt) {
+			break;
+		}
+		/* we found a '%' */
+		/* Exercise 1.4: Your code here. (4/8) */
+		fmt++;
+		ladjust=0;
+		padc=' ';
+		/* check format flag */
+		/* Exercise 1.4: Your code here. (5/8) */
+		if('-' == *fmt) {
+			fmt++;
+			ladjust=1;
+		}else if('0' == *fmt){
+			fmt++;
+			padc='0';
+		}
+		/* get width */
+		/* Exercise 1.4: Your code here. (6/8) */
+		width=0;
+		while ('0' <= *fmt && *fmt <= '9' && *fmt != '\0') {
+			width *= 10;
+			width += *fmt - '0';
+			fmt++;
+		}
+		/* check for long */
+		/* Exercise 1.4: Your code here. (7/8) */
+		long_flag = 0;
+		if (*fmt == 'l') {
+			long_flag = 1;
+			fmt++;
+		}
+		neg_flag = 0;
+		switch (*fmt) {
+		case 'b':
+			if (long_flag) {
+				num = va_arg(ap, long int);
+			} else {
+				num = va_arg(ap, int);
+			}
+			print_num(out, data, num, 2, 0, width, ladjust, padc, 0);
+			break;
+
+		case 'd':
+		case 'D':
+			if (long_flag) {
+				num = va_arg(ap, long int);
+			} else {
+				num = va_arg(ap, int);
+			}
+
+			/*
+			 * Refer to other parts (case 'b', case 'o', etc.) and func 'print_num' to
+			 * complete this part. Think the differences between case 'd' and the
+			 * others. (hint: 'neg_flag').
+			 */
+			/* Exercise 1.4: Your code here. (8/8) */
+			if(num<0) {
+				neg_flag=1;
+			}
+			if(neg_flag) {
+				print_num(out, data, -num, 10, 1, width, ladjust, padc, 0);
+			}
+			else{
+				print_num(out, data, num, 10, 0, width, ladjust, padc, 0);
+			}
+			break;
+
+		case 'o':
+		case 'O':
+			if (long_flag) {
+				num = va_arg(ap, long int);
+			} else {
+				num = va_arg(ap, int);
+			}
+			print_num(out, data, num, 8, 0, width, ladjust, padc, 0);
+			break;
+
+		case 'u':
+		case 'U':
+			if (long_flag) {
+				num = va_arg(ap, long int);
+			} else {
+				num = va_arg(ap, int);
+			}
+			print_num(out, data, num, 10, 0, width, ladjust, padc, 0);
+			break;
+
+		case 'x':
+			if (long_flag) {
+				num = va_arg(ap, long int);
+			} else {
+				num = va_arg(ap, int);
+			}
+			print_num(out, data, num, 16, 0, width, ladjust, padc, 0);
+			break;
+
+		case 'X':
+			if (long_flag) {
+				num = va_arg(ap, long int);
+			} else {
+				num = va_arg(ap, int);
+			}
+			print_num(out, data, num, 16, 0, width, ladjust, padc, 1);
+			break;
+
+		case 'c':
+			c = (char)va_arg(ap, int);
+			print_char(out, data, c, width, ladjust);
+			break;
+
+		case 's':
+			s = (char *)va_arg(ap, char *);
+			print_str(out, data, s, width, ladjust);
+			break;
+
+		case '\0':
+			fmt--;
+			break;
+
+		default:
+			/* output this char as it is */
+			out(data, fmt, 1);
+		}
+		fmt++;
+	}
+}
+
+/* --------------- local help functions --------------------- */
+void print_num(fmt_callback_t out, void *data, unsigned long u, int base, int neg_flag, int length,
+	       int ladjust, char padc, int upcase) {
+	/* algorithm :
+	 *  1. prints the number from left to right in reverse form.
+	 *  2. fill the remaining spaces with padc if length is longer than
+	 *     the actual length
+	 *     TRICKY : if left adjusted, no "0" padding.
+	 *		    if negtive, insert  "0" padding between "0" and number.
+	 *  3. if (!ladjust) we reverse the whole string including paddings
+	 *  4. otherwise we only reverse the actual string representing the num.
+	 */
+
+	int actualLength = 0;
+	char buf[length + 70];
+	char *p = buf;
+	int i;
+
+	do {
+		int tmp = u % base;
+		if (tmp <= 9) {
+			*p++ = '0' + tmp;
+		} else if (upcase) {
+			*p++ = 'A' + tmp - 10;
+		} else {
+			*p++ = 'a' + tmp - 10;
+		}
+		u /= base;
+	} while (u != 0);
+
+	if (neg_flag) {
+		*p++ = '-';
+	}
+
+	/* figure out actual length and adjust the maximum length */
+	actualLength = p - buf;
+	if (length < actualLength) {
+		length = actualLength;
+	}
+
+	/* add padding */
+	if (ladjust) {
+		padc = ' ';
+	}
+	if (neg_flag && !ladjust && (padc == '0')) {
+		for (i = actualLength - 1; i < length - 1; i++) {
+			buf[i] = padc;
+		}
+		buf[length - 1] = '-';
+	} else {
+		for (i = actualLength; i < length; i++) {
+			buf[i] = padc;
+		}
+	}
+
+	/* prepare to reverse the string */
+	int begin = 0;
+	int end;
+	if (ladjust) {
+		end = actualLength - 1;
+	} else {
+		end = length - 1;
+	}
+
+	/* adjust the string pointer */
+	while (end > begin) {
+		char tmp = buf[begin];
+		buf[begin] = buf[end];
+		buf[end] = tmp;
+		begin++;
+		end--;
+	}
+
+	out(data, buf, length);
+}
+
+```
+
+* 解题心得：
