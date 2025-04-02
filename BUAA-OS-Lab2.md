@@ -35,7 +35,7 @@
   LIST_ENTRY(Page) a;
   ```
 
-  它的本质是一个链表项，包括指向下一个元素的指针le_next，以及指向前一个元素链表项le_next 的指针le_prev。le_prev 是一个指针的指针，它的作用是当删除一个元素时，更改前一个元素链表项的le_next。
+  它的本质是一个链表项，包括指向下一个元素的指针le_next，以及指向前一个元素链表项`le_next` 的指针`le_prev`。`le_prev` 是一个指针的指针，它的作用是当删除一个元素时，更改前一个元素链表项的`le_next`。
 * `LIST_EMPTY(head)`，判断head 指针指向的头部结构体对应的链表是否为空。
 * `LIST_FIRST(head)`，将返回head 对应的链表的首个元素。
 * `LIST_INIT(head)`，将head 对应的链表初始化。
