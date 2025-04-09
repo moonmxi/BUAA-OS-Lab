@@ -63,6 +63,10 @@
 * **`page_init()`** ，实现位于kern/pmap.c 中，作用是初始化pages 数组中的Page 结构体以
   及空闲链表。这个函数的具体功能会在后面详细描述。
 
+---
+
+
+
 ### 首先是mips_detect_memory(u_int _memsize)
 
 ```c
@@ -92,6 +96,10 @@ void mips_detect_memory(u_int _memsize) {
 ```
 
 物理页字节数为4K，除物理内存总字节数即可求得 `npage`。
+
+---
+
+
 
 ### 接下来是mips_vm_init()
 
@@ -199,6 +207,10 @@ pages = (struct Page *)alloc(npage * sizeof(struct Page), PAGE_SIZE, 1);
 将虚拟内存中代表空闲空间截止地址的 `freedom`增加 `npage——物理总页数`个页的大小，即将其后移对应大小的位移，
 同时，按照 `PAGE_SIZE——物理页大小`来对齐，并对所分配的内存清零。
 
+---
+
+
+
 ### 接下来是page_init()
 
 这个函数的作用是初始化空闲列表页
@@ -265,6 +277,10 @@ struct Page {
 也就是说，`Page`结构体就是一个合格的链表项形式，
 其中的 `pp_ref`是后面要用到的标记数字，代表这一页物理内存被引用的次数，它等于有多少虚拟页映射到该物理页。
 
+---
+
+
+
 #### 趁热打铁，恰好下一道练习题就是经典的链表插入。
 
 ```
@@ -286,6 +302,10 @@ struct Page {
 
 这里后续传入的 `elm`都是指针类型，比如 `Page*`，所以有 `(elm)->field.le_prev`这样的写法，
 以及 `LIST_NEXT((listelm), field) = (elm);`这样的语句。
+
+---
+
+
 
 接着，我们回到了物理内存管理。
 
@@ -314,6 +334,30 @@ static inline u_long page2kva(struct Page *pp) {
 }
 ```
 
+* `page2ppn`：由于 `pp`和 `pages`都是 `Page*`类型，所以二者相减就是 `pp`在数组中的索引，又由于 `pages`是物理页控制块数组，其中元素与物理页一一对应，所以 `pp`的索引就是物理页号。
+* `page2pa`：这里的 `PGSHIFT`定义在 `mmu.h`：`#define PGSHIFT 12`，将页经过上一个函数来获得页号，再左移十二位，就取到了前二十位，也就是这个页的页号（物理页共1M个，即2^20个）。
+* `pa2page`：通过页地址取得页号，在不超过物理总页数的情况下，在 `pages`数组中取得对应的页。
+* `page2kva`：先将页通过 `page2pa`函数转化为页物理地址，再通过 `KADDR`宏，转化为内核态使用的虚拟地址。
+
+以下是重要结构体 `Page_list`定义：
+
+```c
+struct Page_list{
+	struct Page{
+		struct {                                                                                   \
+			struct type *le_next;  /* next element */                                  \
+			struct type **le_prev; /* address of previous next element */              \
+		} pp_link;
+		u_short pp_ref;
+	}* lh_first;
+}
+```
+
+---
+
+
+
+现在终于开始page_init()函数：
 
 
 ---
@@ -380,3 +424,23 @@ static inline u_long page2kva(struct Page *pp) {
 循环链表：适合循环访问的场景，但插入和删除时仍然受到一定限制。
 
 单向链表：在结构简单、访问模式较为单一时最为高效。
+
+### 2.3
+
+问题：请阅读`include/queue.h` 以及`include/pmap.h`, 将`Page_list` 的结构梳理清楚，选择正确的展开结构。
+
+答案应该选C，
+
+因为首先内层 `Page`里面的 `le_prev`是双指针，其次外层在定义时就已经写了 `struct type *lh_first;`，故应为
+
+```c
+struct Page_list{
+	struct Page{
+		struct {                                                                                   \
+			struct type *le_next;  /* next element */                                  \
+			struct type **le_prev; /* address of previous next element */              \
+		} pp_link;
+		u_short pp_ref;
+	}* lh_first;
+}
+```
