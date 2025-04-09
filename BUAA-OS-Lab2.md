@@ -20,7 +20,7 @@
 
 根据映射规则，0x80400000 对应的物理地址是0x400000。在物理地址0x400000 的前面，存放着操作系统内核的代码和定义的全局变量或数组（还额外保留了一些空间）。接下来将从物理地址 0x400000 开始分配物理内存，用于建立管理内存的数据结构。
 
-* 将`a`按`n`对齐
+* 将 `a`按 `n`对齐
 
   ```
   #define ROUND(a, n) (((((u_long)(a)) + (n)-1)) & ~((n)-1))
@@ -35,14 +35,14 @@
   LIST_ENTRY(Page) a;
   ```
 
-  它的本质是一个链表项，包括指向下一个元素的指针le_next，以及指向前一个元素链表项`le_next` 的指针`le_prev`。`le_prev` 是一个指针的指针，它的作用是当删除一个元素时，更改前一个元素链表项的`le_next`。
+  它的本质是一个链表项，包括指向下一个元素的指针le_next，以及指向前一个元素链表项 `le_next` 的指针 `le_prev`。`le_prev` 是一个指针的指针，它的作用是当删除一个元素时，更改前一个元素链表项的 `le_next`。
 * `LIST_EMPTY(head)`，判断head 指针指向的头部结构体对应的链表是否为空。
 * `LIST_FIRST(head)`，将返回head 对应的链表的首个元素。
 * `LIST_INIT(head)`，将head 对应的链表初始化。
 * `LIST_NEXT(elm, field)`，返回指针elm 指向的元素在对应链表中的下一个元素的指针。`elm` 指针指向的结构体需要包含一个名为 `field` 的字段，类型是一个链表项 `LIST_ENTRY(type)`，下面出现的 `field` 含义均和此相同。
 * `LIST_INSERT_AFTER(listelm, elm, field)`，将elm 插到已有元素listelm 之后。
 * `LIST_INSERT_BEFORE(listelm, elm, field)`，将 `elm` 插到已有元素 `listelm` 之前。
-* `LIST_INSERT_HEAD(head, elm, field)`，将`elm`插到`head` 对应链表的头部。
+* `LIST_INSERT_HEAD(head, elm, field)`，将 `elm`插到 `head` 对应链表的头部。
 * `LIST_REMOVE(elm, field)`，将 `elm` 从对应链表中删除。
 
 ---
@@ -52,3 +52,26 @@
 ## Exercise笔记
 
 ### 2.1
+
+
+---
+
+---
+
+## 思考题
+
+### 2.1
+
+* 题目：
+
+```
+请根据上述说明，回答问题：在编写的C 程序中，指针变量中存储的地址被视为虚拟地址，还是物理地址？MIPS 汇编程序中 lw 和sw 指令使用的地址被视为虚拟地址，还是物理地址？
+```
+
+* 答案：
+
+```
+均被视为虚拟地址
+```
+
+### 2.2
