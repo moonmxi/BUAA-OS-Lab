@@ -65,8 +65,6 @@
 
 ---
 
-
-
 ### 首先是mips_detect_memory(u_int _memsize)
 
 ```c
@@ -98,8 +96,6 @@ void mips_detect_memory(u_int _memsize) {
 物理页字节数为4K，除物理内存总字节数即可求得 `npage`。
 
 ---
-
-
 
 ### 接下来是mips_vm_init()
 
@@ -209,8 +205,6 @@ pages = (struct Page *)alloc(npage * sizeof(struct Page), PAGE_SIZE, 1);
 
 ---
 
-
-
 ### 接下来是page_init()
 
 这个函数的作用是初始化空闲列表页
@@ -279,8 +273,6 @@ struct Page {
 
 ---
 
-
-
 #### 趁热打铁，恰好下一道练习题就是经典的链表插入。
 
 ```
@@ -304,8 +296,6 @@ struct Page {
 以及 `LIST_NEXT((listelm), field) = (elm);`这样的语句。
 
 ---
-
-
 
 接着，我们回到了物理内存管理。
 
@@ -355,9 +345,41 @@ struct Page_list{
 
 ---
 
+现在终于开始page_init()函数，话不多说，先上代码：
 
+```c
+void page_init(void) {
+	/* Step 1: Initialize page_free_list. */
+	LIST_INIT(&page_free_list);
 
-现在终于开始page_init()函数：
+	/* Step 2: Align `freemem` up to multiple of PAGE_SIZE. */
+	freemem = ROUND(freemem, PAGE_SIZE);
+
+	/* Step 3: Mark all memory below `freemem` as used (set `pp_ref` to 1) */
+	u_long usedpage = PPN(PADDR(freemem));
+
+	for (u_long i = 0; i < usedpage; i++) {
+		pages[i].pp_ref = 1;
+	}
+
+	/* Step 4: Mark the other memory as free. */
+	for (u_long i = usedpage; i < npage; i++) {
+		pages[i].pp_ref = 0;
+		LIST_INSERT_HEAD(&page_free_list, &pages[i], pp_link);
+	}
+}
+```
+
+* 首先是初始化空闲物理块数组 `page_free_list`，这里需要注意的是，`page_free_list`经过层层包装，并不是一个指针类型，而 `LIST_INIT`这个宏需要使用 `->`来获取域，即需要传入指针类型，故要加上取址符号 `&`。
+* 然后和在 `alloc`函数中一样，对可用空间起始位置 `freedom`按 `PAGE_SIZE`对齐。
+* 随后获取 `freedom`地址对应的页号，将这个页号之前的页都标记为已经使用，即 `pp_ref`置1。
+* 最后把剩下的页设置为未使用，即 `pp_ref`置0，并插入到 `page_free_list`数组中。
+
+在有了上面全部的预备知识之后，这道题便可以迎刃而解了，只需要注意各个函数以及宏的传参规范。
+
+---
+
+接下来是page_alloc()函数，继续上代码：
 
 
 ---
