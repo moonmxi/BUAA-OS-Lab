@@ -62,15 +62,11 @@ struct Env {
 
 `env.c` 文件中实现了一个 `mkenvid` 函数，作用就是生成一个新的进程 `env_id`。虽然 `env_id`已经能够唯一标识进程，但是还需要引入 `env_asid`来唯一标识虚拟地址空间，用于TLB刷新。
 
+### 三、GNU特殊语法：
 
+**`[first ... last] = value` ：**
 
-
-
-
-
-
-
-
+对数组某个区间上的元素赋成同一个值。
 
 ---
 
@@ -403,3 +399,260 @@ static int load_icode_mapper(void *data, u_long va, size_t offset, u_int perm, c
 	return page_insert(env->env_pgdir, env->env_asid, p, va, perm);
 }
 ```
+
+### 3.7
+
+这道题是在 `mips_init`函数里面调用的最初的创建新进程函数 `env_create`：
+
+```c
+struct Env *env_create(const void *binary, size_t size, int priority) {
+	struct Env *e;
+	/* Step 1: Use 'env_alloc' to alloc a new env, with 0 as 'parent_id'. */
+	if(env_alloc(&e, 0)) {
+		return NULL;
+	}
+
+	/* Step 2: Assign the 'priority' to 'e' and mark its 'env_status' as runnable. */
+	e->env_pri=priority;
+	e->env_status=ENV_RUNNABLE;
+
+	/* Step 3: Use 'load_icode' to load the image from 'binary', and insert 'e' into
+	 * 'env_sched_list' using 'TAILQ_INSERT_HEAD'. */
+	load_icode(e, binary, size);
+	TAILQ_INSERT_HEAD(&env_sched_list, e, env_sched_link);
+	return e;
+}
+```
+
+有了前面的准备工作，这道题只需要看清楚参数格式，按提示填入即可。
+
+### 3.8
+
+这道题要求补全 `env_run`函数：
+
+```c
+void env_run(struct Env *e) {
+	assert(e->env_status == ENV_RUNNABLE);
+	// WARNING BEGIN: DO NOT MODIFY FOLLOWING LINES!
+#ifdef MOS_PRE_ENV_RUN
+	MOS_PRE_ENV_RUN_STMT
+#endif
+	// WARNING END
+
+	/* Step 1:
+	 *   If 'curenv' is NULL, this is the first time through.
+	 *   If not, we may be switching from a previous env, so save its context into
+	 *   'curenv->env_tf' first.
+	 */
+	if (curenv) {
+		curenv->env_tf = *((struct Trapframe *)KSTACKTOP - 1);
+	}
+
+	/* Step 2: Change 'curenv' to 'e'. */
+	curenv = e;
+	curenv->env_runs++; // lab6
+
+	/* Step 3: Change 'cur_pgdir' to 'curenv->env_pgdir', switching to its address space. */
+	cur_pgdir = curenv->env_pgdir;
+
+	/* Step 4: Use 'env_pop_tf' to restore the curenv's saved context (registers) and return/go
+	 * to user mode.*/
+	env_pop_tf(&curenv->env_tf, curenv->env_asid);
+}
+```
+
+这个函数的前半部分题目已经给出：
+
+* 如果当前有进程在运行，那么将其 `env_tf`存储起来
+* 将当前进程切换为 `e`
+
+后半部分其实也是按照提示来写，其中调用的env_pop_tf函数是汇编函数：
+
+```c
+.text
+LEAF(env_pop_tf)
+.set reorder
+.set at
+	mtc0    a1, CP0_ENTRYHI
+	move    sp, a0
+	RESET_KCLOCK
+	j       ret_from_exception
+END(env_pop_tf)
+```
+
+其作用是将传入的 `asid`设置到 `CP0_ENTRYHI`中，并将 `sp`寄存器设置为当前进程的 `trapframe`地址，最后从异常中返回，恢复上下文。
+
+**至此第一部分完成！**
+
+---
+
+### 3.9
+
+这道题是让我们把汇编源码粘贴到对应位置：
+
+```c
+.section .text.exc_gen_entry
+exc_gen_entry:
+	SAVE_ALL
+	/*
+	* Note: When EXL is set or UM is unset, the processor is in kernel mode.
+	* When EXL is set, the value of EPC is not updated when a new exception occurs.
+	* To keep the processor in kernel mode and enable exception reentrancy,
+	* we unset UM and EXL, and unset IE to globally disable interrupts.
+	*/
+	mfc0    t0, CP0_STATUS
+	and     t0, t0, ~(STATUS_UM | STATUS_EXL | STATUS_IE)
+	mtc0    t0, CP0_STATUS
+/* Exercise 3.9: Your code here. */
+	mfc0 t0, CP0_CAUSE
+	andi t0, 0x7c
+	lw t0, exception_handlers(t0)
+	jr t0
+```
+
+这段异常分发代码的作用流程如下：
+
+* 使用 `SAVE_ALL` 宏将当前上下文保存到内核的异常栈中。
+* 清除 `Status` 寄存器中的 `UM`、`EXL`、`IE` 位，以保持处理器处于内核态（`UM==0`）、关闭中断且允许嵌套异常。
+* 将 `Cause` 寄存器的内容拷贝到 `t0` 寄存器中。
+* 取得 `Cause` 寄存器中的2~6 位，也就是对应的异常码，这是区别不同异常的重要标志。
+* 以得到的异常码作为索引在 `exception_handlers` 数组中找到对应的中断处理函数，后文中会有涉及。
+* 跳转到对应的中断处理函数中，从而响应了异常，并将异常交给了对应的异常处理函数去处理。
+
+### 3.10
+
+这道题依旧是复制粘贴：
+
+```c
+SECTIONS {
+	/* Exercise 3.10: Your code here. */
+	. = 0x80000000;
+	.tlb_miss_entry : {
+		*(.text.tlb_miss_entry)
+	}
+
+	. = 0x80000180;
+	.exc_gen_entry : {
+		*(.text.exc_gen_entry)
+	}
+}
+```
+
+这道题也写好了我们粘贴的位置，只要粘贴上即可，如果是手动输入，参考Lab1的lds格式。
+
+这段代码的原因是：
+
+`.text.exc_gen_entry` 段和 `.text.tlb_miss_entry` 段需要被链接器放到特定的位置。它们是异常处理程序的入口地址。在我们的系统中，CPU 发生异常（除了用户态地址的TLB Miss 异常）后，就会自动跳转到地址 `0x80000180` 处；发生用户态地址的TLB Miss 异常时，会自动跳转到地址 `0x80000000`处。开始执行。
+
+### 3.11
+
+接下来涉及到中断分发的过程，首先是准备工作，初始化异常向量组：
+
+```c
+void (*exception_handlers[32])(void) = {
+    [0 ... 31] = handle_reserved,
+    [0] = handle_int,
+    [2 ... 3] = handle_tlb,
+#if !defined(LAB) || LAB >= 4
+    [1] = handle_mod,
+    [8] = handle_sys,
+#endif
+};
+```
+
+通过把相应处理函数的地址填到对应数组项中，我们初始化了如下异常：
+
+* 0 号异常 的处理函数为 `handle_int`，表示中断，由时钟中断、控制台中断等中断造成
+* 1 号异常 的处理函数为 `handle_mod`，表示存储异常，进行存储操作时该页被标记为只读
+* 2 号异常 的处理函数为 `handle_tlb`，表示TLB load 异常
+* 3 号异常 的处理函数为 `handle_tlb`，表示TLB store 异常
+* 8 号异常 的处理函数为 `handle_sys`，表示系统调用，用户进程通过执行 `syscall` 指令陷入内核
+
+那么我们涉及到的主要是0号异常——中断。
+
+异常分发判断当前异常为中断后，进入对应中断程序：
+
+```c
+#include <asm/asm.h>
+#include <stackframe.h>
+
+.macro BUILD_HANDLER exception handler
+NESTED(handle_\exception, TF_SIZE + 8, zero)
+	move    a0, sp
+	addiu   sp, sp, -8
+	jal     \handler
+	addiu   sp, sp, 8
+	j       ret_from_exception
+END(handle_\exception)
+.endm
+
+.text
+
+FEXPORT(ret_from_exception)
+	RESTORE_ALL
+	eret
+
+NESTED(handle_int, TF_SIZE, zero)
+	mfc0    t0, CP0_CAUSE
+	mfc0    t2, CP0_STATUS
+	and     t0, t2
+	andi    t1, t0, STATUS_IM7
+	bnez    t1, timer_irq
+timer_irq:
+	li      a0, 0
+	j       schedule
+END(handle_int)
+
+BUILD_HANDLER tlb do_tlb_refill
+
+#if !defined(LAB) || LAB >= 4
+BUILD_HANDLER mod do_tlb_mod
+BUILD_HANDLER sys do_syscall
+#endif
+
+BUILD_HANDLER reserved do_reserved
+
+```
+
+### 3.12
+
+这个函数要写的内容较多
+
+```c
+void schedule(int yield) {
+	static int count = 0; // remaining time slices of current env
+	struct Env *e = curenv;
+	if (yield || count <= 0 || e == NULL || e->env_status !=ENV_RUNNABLE) {
+		if (e != NULL) {
+			TAILQ_REMOVE(&env_sched_list, e, env_sched_link);
+			if (e->env_status == ENV_RUNNABLE) {
+				TAILQ_INSERT_TAIL(&env_sched_list, e, env_sched_link);
+			}
+		}
+
+		if (TAILQ_EMPTY(&env_sched_list)) {
+			panic("schedule: no runnable envs");
+		}
+		e = TAILQ_FIRST(&env_sched_list);
+
+		count = e->env_pri;
+	}
+	count--;
+	env_run(e);
+}
+```
+
+根据注释和指导书的提醒，以下几种情况需要调度新进程：
+
+* `yield`为真
+* `count`为0
+* 无当前进程
+* 进程状态不是可运行
+
+此时如果 `e`存在，那么需要将其从调度列表的首项移除->如果 `e`依旧是可运行（可能是时间片到了），那么需要将其插入到调度链表的结尾；
+
+如果此时调度列表空了，会产生报错。
+
+随后取调度列表的第一项，为时间片赋值为进程设置的优先级。
+
+流程结束，时间片减一，进程启动！
