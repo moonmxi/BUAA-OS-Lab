@@ -656,3 +656,86 @@ void schedule(int yield) {
 随后取调度列表的第一项，为时间片赋值为进程设置的优先级。
 
 流程结束，时间片减一，进程启动！
+
+---
+
+---
+
+## Thinking
+
+### 3.1
+
+* 请结合 MOS 中的页目录自映射应用解释代码中 `e->env_pgdir[PDX(UVPT)] = PADDR(e->env_pgdir) | PTE_V`的含义。
+
+MOS 中，将页表和页目录映射到了用户空间中的 0x7fc00000-0x80000000（共 4MB）区域，这意味着 MOS 中允许在用户态下通过 UVPT 访问当前进程的页表和页目录。结合 `mmu.h`中的宏定义 `#define UVPT (ULIM - PDMAP)`，我们可以得知 `UVPT`即为用户地址空间（虚存）中 **起始页表项的地址** 。之后对这个页表基址进行自映射。
+
+### 3.2
+
+* `elf_load_seg`以函数指针的形式，接受外部自定义的回调函数 `map_page`。请你找到与之相关的 `data`这一参数在此处的来源，并思考它的作用。没有这个参数可不可以？为什么？
+
+ **来源** ：
+在 `include/elf.h`中可以找到 `typedef int (*elf_mapper_t)(void *data, u_long va, size_t offset, u_int perm, const void *src,size_t len);`这样一条语句。可知 `void *data`这一参数的来源是 `elf_mapper_t`这一函数指针类型的形参列表。
+
+ **作用** ：
+在 `env.c`中的 `load_icode`函数中对 `elf_load_seg`有如下调用：
+
+```c
+elf_load_seg(ph, binary + ph->p_offset, load_icode_mapper, e)
+```
+
+在形参 `void *data`的位置传入了进程控制块指针 `e`。
+
+可知 `env`这个结构控制块指针在 `load_icode_mapper`这个回调函数里的作用是为 `page_insert`函数提供了参数 `env->env_pgdir`和 `env->env_asid`。对不同调用需求的满足则是通过传入不同的 `mapper`回调函数和 `data`函数指针来实现的。而又因为需求不同，传入 `data`指针的类型也会存在差异，因此，采用以 `void`类型传入，在对应的 `mapper`回调函数中进行相应的转型可以极大程度上提升 `elf_load_seg`函数的 **可复用性** 。
+
+不可以没有这个参数，因为这样就无法满足回调函数的参数需求了。
+
+### 3.3
+
+* 结合 elf_load_seg 的参数和实现，考虑该函数需要处理哪些页面加载的情况。
+
+答案：
+
+* 段的虚拟地址与页的对齐情况
+* 二进制文件大小与页大小的关系
+* 二进制文件大小与段内存大小的关系
+
+### 3.4
+
+* “这里的 `env_tf.cp0_epc`字段指示了进程恢复运行时 PC 应恢复到的位置。我们要运行的进程的代码段预先被载入到了内存中，且程序入口为 `e_entry`，当我们运行进程时，CPU 将自动从 PC 所指的位置开始执行二进制码。”思考上面这一段话，并根据自己在 Lab2 中的理解，回答：你认为这里的 `env_tf.cp0_epc`存储的是物理地址还是虚拟地址?
+
+PC 是CPU中用于记录当前运行代码在内存中的地址的寄存器，是当前运行进程地址空间中的虚拟地址。而此处的 `env_tf.cp0_epc`指示了进程恢复运行时 PC 应恢复到的位置，也就是说它记录的是一个 **PC值** ，所以 `env_tf.cp0_epc`是一个 **虚拟地址** 。
+
+### 3.5
+
+* 试找出 0、1、2、3 号异常处理函数的具体实现位置。8 号异常（系统调用）涉及的 `do_syscall()`函数将在 Lab4 中实现。
+
+对于0号异常，对应的 `handler`的具体实现在 `genex.S`中的汇编函数 `handle_int`中；而对于1号异常，`handler`的具体实现为 `tlbex.c`中的 `do_tlb_mod`函数；而对于2、3号异常，`handler`的具体实现为 `tlbex.c`中的 `do_tlb_refill`函数。
+
+### 3.6
+
+* 阅读 `init.c`、`kclock.S`、`env_asm.S` 和 `genex.S `这几个文件，并尝试说出 `enable_irq` 和 `timer_irq` 中每行汇编代码的作用。
+
+```c
+LEAF(enable_irq)
+    li      t0, (STATUS_CU0 | STATUS_IM4 | STATUS_IEc) //状态位设置：(CP0使能|IM4中断使能|中断使能)，将该值写入t0寄存器
+    mtc0    t0, CP0_STATUS // 将状态位设置写入CP0的STATUS寄存器
+    jr      ra //  函数返回
+END(enable_irq)
+```
+
+```c
+timer_irq: /*in function `handle_int`*/
+    sw      zero, (KSEG1 | DEV_RTC_ADDRESS | DEV_RTC_INTERRUPT_ACK) // 写该地址响应中断
+    li      a0, 0
+    j       schedule // 和上一条指令结合起来等价于schedule(0)(即不yield使能，调用schedule函数)
+```
+
+### 3.7
+
+* 阅读相关代码，思考操作系统是怎么根据时钟中断切换进程的。
+
+答案：
+
+* 异常分发
+* 进一步细化中断类型
+* 进程调度
