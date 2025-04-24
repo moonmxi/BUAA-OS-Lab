@@ -98,7 +98,7 @@ void env_init(void) {
 	 * list should be the same as they are in the 'envs' array. */
 	for(i=NENV-1;i>=0;i--) {
 		env[i].status=ENV_FREE;
-		LIST_INSERT_HEAD(&env_free_list, &env[i], env_tf);
+		LIST_INSERT_HEAD(&env_free_list, &env[i], env_link);
 	}
 
 	struct Page *p;
